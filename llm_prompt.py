@@ -3,10 +3,10 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from openai import OpenAI
 
 
-def call_llm(prompt: str, enable_thinking: bool = True, **kwargs) -> dict:
+def call_llm(prompt: str, enable_thinking: bool = True) -> dict:
     env_path = Path(__file__).parent / ".env"
     load_dotenv(env_path)
 
@@ -19,21 +19,14 @@ def call_llm(prompt: str, enable_thinking: bool = True, **kwargs) -> dict:
     if not model:
         raise ValueError("MODEL not found in .env")
 
-    llm_kwargs = {
-        "model": model,
-        "api_key": api_key,
-        "base_url": base_url if base_url else None,
-        **kwargs,
-    }
-
     extra_body = {}
     if enable_thinking:
         extra_body = {"thinking": {"type": "enabled"}}
     else:
         extra_body = {"thinking": {"type": "disabled"}}
 
-    llm = ChatOpenAI(**llm_kwargs)
-    raw = llm.root_client.chat.completions.create(
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    raw = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
         extra_body=extra_body,
