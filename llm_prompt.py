@@ -3,7 +3,14 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import (
+    OpenAI,
+    APIError,
+    APIConnectionError,
+    RateLimitError,
+    AuthenticationError,
+    BadRequestError,
+)
 
 
 def call_llm(prompt: str, enable_thinking: bool = True) -> dict:
@@ -25,17 +32,33 @@ def call_llm(prompt: str, enable_thinking: bool = True) -> dict:
     else:
         extra_body = {"thinking": {"type": "disabled"}}
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    raw = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        extra_body=extra_body,
-        reasoning_effort="high" if enable_thinking else None,
-    )
+    try:
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        raw = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            extra_body=extra_body,
+            reasoning_effort="high" if enable_thinking else None,
+        )
+    except AuthenticationError:
+        raise RuntimeError("API_KEY invalid or expired, please check .env")
+    except BadRequestError as e:
+        raise RuntimeError(f"Request error: {e.message}")
+    except RateLimitError:
+        raise RuntimeError("Rate limit exceeded, please try later")
+    except APIConnectionError:
+        raise RuntimeError(
+            f"Connection failed, check BASE_URL ({base_url}) and network"
+        )
+    except APIError as e:
+        raise RuntimeError(f"API error: {e.message}")
 
-    choice = raw.choices[0]
-    content = choice.message.content
-    thinking = getattr(choice.message, "reasoning_content", None)
+    try:
+        choice = raw.choices[0]
+        content = choice.message.content
+        thinking = getattr(choice.message, "reasoning_content", None)
+    except (AttributeError, IndexError, TypeError):
+        raise RuntimeError("Unexpected API response format")
 
     return {"content": content, "thinking": thinking}
 
